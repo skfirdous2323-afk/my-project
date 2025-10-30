@@ -215,7 +215,87 @@ app.post("/faq", async (req, res) => {
 
   res.json({ reply });
 });
+// ✅ AI Smart Message Router
+app.post("/smart", async (req, res) => {
+  try {
+    const userMessage = req.body.message?.trim().toLowerCase() || "";
 
+    // Step 1: OpenAI se samjho user ka intent
+    const completion = await client.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: `
+          You are a Shopify chatbot. 
+          Based on the message, decide the intent:
+          - "track" if user wants order tracking.
+          - "product" if user wants product details.
+          - "faq" if user asks about return/refund/policy/cancel/exchange.
+          - "chat" if it's a general shopping question.
+          Respond ONLY with one word: track, product, faq, or chat.
+          `
+        },
+        { role: "user", content: userMessage }
+      ]
+    });
+
+    const intent = completion.choices?.[0]?.message?.content?.trim().toLowerCase() || "chat";
+    console.log("🧭 AI detected intent:", intent);
+
+    // Step 2: Intent ke hisab se backend API call
+    let finalReply = "";
+
+    if (intent === "track") {
+      const trackRes = await fetch(`${process.env.BASE_URL}/track`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mobile: userMessage.replace(/\D/g, "") })
+      });
+      const data = await trackRes.json();
+      finalReply = data.message || data.error || "Could not fetch tracking info.";
+    }
+
+    else if (intent === "product") {
+      const productRes = await fetch(`${process.env.BASE_URL}/product`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: userMessage })
+      });
+      const data = await productRes.json();
+      if (data.error) finalReply = data.error;
+      else
+        finalReply = `🛍️ ${data.title}\n💰 ${data.price}\n🔗 ${data.link}`;
+    }
+
+    else if (intent === "faq") {
+      const faqRes = await fetch(`${process.env.BASE_URL}/faq`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: userMessage })
+      });
+      const data = await faqRes.json();
+      finalReply = data.reply || "No FAQ found.";
+    }
+
+    else {
+      // General AI chat
+      const chatRes = await client.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: "You are a polite shopping assistant for Xefere Store." },
+          { role: "user", content: userMessage }
+        ]
+      });
+      finalReply = chatRes.choices?.[0]?.message?.content || "Sorry, I didn’t get that.";
+    }
+
+    res.json({ reply: finalReply });
+  } catch (err) {
+    console.error("🔥 Smart Router Error:", err);
+    res.status(500).json({ error: "Something went wrong in smart router." });
+  }
+});
 
 // ✅ Start Server
 // ✅ Start Server
@@ -223,5 +303,6 @@ app.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);
   console.log(`🌍 Running on Render port: ${PORT}`);
 });
+
 
 
