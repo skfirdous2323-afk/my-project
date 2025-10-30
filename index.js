@@ -139,53 +139,51 @@ app.post("/track", async (req, res) => {
   // ... tracking code here
 });
 
-// ✅ AI Chat Route (Smart but restricted to shopping)
+// ✅ AI Chat Route (with OpenAI API)
 import OpenAI from "openai";
+const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
-app.post("/chat", async (req, res) => {
-  const userMessage = req.body.message?.toLowerCase() || "";
-
-  // ❌ If question not related to shopping
-  const shoppingKeywords = [
-    "order", "product", "refund", "return", "exchange",
-    "cancel", "delivery", "track", "shipping", "price",
-    "discount", "offer", "payment", "store", "shop"
-  ];
-
-  const isShoppingRelated = shoppingKeywords.some((word) =>
-    userMessage.includes(word)
-  );
-
-  if (!isShoppingRelated) {
-    return res.json({
-      reply: "❌ Sorry, I can only help with shopping, orders, returns, and tracking.",
-    });
-  }
-
+app.post("/api/chat", async (req, res) => {
   try {
-    const response = await client.chat.completions.create({
+    const userMessage = req.body.message?.trim().toLowerCase() || "";
+
+    // Keywords to check if message is shopping-related
+    const shoppingKeywords = [
+      "order", "product", "refund", "return", "exchange",
+      "cancel", "delivery", "track", "shipping", "price",
+      "discount", "offer", "payment", "store", "shop"
+    ];
+
+    const isShoppingRelated = shoppingKeywords.some((word) =>
+      userMessage.includes(word)
+    );
+
+    if (!isShoppingRelated) {
+      return res.json({
+        reply: "❌ Sorry, I can only help with shopping, orders, returns, and tracking."
+      });
+    }
+
+    // ✅ Call OpenAI API
+    const completion = await client.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
         {
           role: "system",
-          content: "You are a polite and helpful Shopify store assistant. Always answer questions related to shopping only.",
+          content:
+            "You are a helpful Shopify store assistant. Only answer shopping-related questions clearly and politely."
         },
-        { role: "user", content: userMessage },
-      ],
+        { role: "user", content: userMessage }
+      ]
     });
 
-    const reply = response.choices[0].message.content;
+    const reply = completion.choices?.[0]?.message?.content || "Sorry, I couldn’t understand that.";
     res.json({ reply });
   } catch (error) {
-    console.error("GPT Error:", error);
+    console.error("🛑 OpenAI Chat Error:", error);
     res.status(500).json({ error: "AI reply failed" });
   }
 });
-
 
 // ✅ Auto FAQ + Return/Refund Assistant
 app.post("/faq", async (req, res) => {
@@ -225,4 +223,5 @@ app.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);
   console.log(`🌍 Running on Render port: ${PORT}`);
 });
+
 
