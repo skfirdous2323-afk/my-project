@@ -139,6 +139,53 @@ app.post("/track", async (req, res) => {
   // ... tracking code here
 });
 
+// ✅ AI Chat Route (Smart but restricted to shopping)
+import OpenAI from "openai";
+
+const client = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+
+app.post("/chat", async (req, res) => {
+  const userMessage = req.body.message?.toLowerCase() || "";
+
+  // ❌ If question not related to shopping
+  const shoppingKeywords = [
+    "order", "product", "refund", "return", "exchange",
+    "cancel", "delivery", "track", "shipping", "price",
+    "discount", "offer", "payment", "store", "shop"
+  ];
+
+  const isShoppingRelated = shoppingKeywords.some((word) =>
+    userMessage.includes(word)
+  );
+
+  if (!isShoppingRelated) {
+    return res.json({
+      reply: "❌ Sorry, I can only help with shopping, orders, returns, and tracking.",
+    });
+  }
+
+  try {
+    const response = await client.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: "You are a polite and helpful Shopify store assistant. Always answer questions related to shopping only.",
+        },
+        { role: "user", content: userMessage },
+      ],
+    });
+
+    const reply = response.choices[0].message.content;
+    res.json({ reply });
+  } catch (error) {
+    console.error("GPT Error:", error);
+    res.status(500).json({ error: "AI reply failed" });
+  }
+});
+
 
 // ✅ Auto FAQ + Return/Refund Assistant
 app.post("/faq", async (req, res) => {
@@ -173,7 +220,9 @@ app.post("/faq", async (req, res) => {
 
 
 // ✅ Start Server
-app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
-app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
-
+// ✅ Start Server
+app.listen(PORT, () => {
+  console.log(`✅ Server running on port ${PORT}`);
+  console.log(`🌍 Running on Render port: ${PORT}`);
+});
 
