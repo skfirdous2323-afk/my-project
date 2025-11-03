@@ -3,7 +3,8 @@ import cors from "cors";
 import dotenv from "dotenv";
 import fetch from "node-fetch";
 import OpenAI from "openai";
-
+import { franc } from "franc";
+import translate from "@vitalets/google-translate-api";
 dotenv.config();
 const app = express();
 app.use(cors());
@@ -193,8 +194,20 @@ app.post("/smart", async (req, res) => {
   const SHOPIFY_API_URL =
     process.env.SHOPIFY_API_URL ||
     `https://${process.env.SHOPIFY_STORE_URL}/admin/api/2023-10`;
-
+// 🌍 Detect & translate language to English
+const lang = franc(userMessage);
+let translatedMessage = userMessage;
+if (lang !== "eng") {
   try {
+    const translation = await translate(userMessage, { to: "en" });
+    translatedMessage = translation.text;
+  } catch (err) {
+    console.error("Translation error:", err);
+  }
+}
+
+ 
+ try {
     // 🎯 Detect intent
     const completion = await client.chat.completions.create({
       model: "gpt-4o-mini",
@@ -207,7 +220,7 @@ app.post("/smart", async (req, res) => {
             Respond ONLY with one word: track, product, faq, or chat.
           `,
         },
-        { role: "user", content: userMessage },
+        { role: "user", content: translatedMessage },
       ],
     });
 
@@ -217,6 +230,16 @@ app.post("/smart", async (req, res) => {
 
     let finalReply = "";
 
+
+// 🌍 Translate back to user’s language (if not English)
+if (lang !== "eng") {
+  try {
+    const backTranslation = await translate(finalReply, { to: lang });
+    finalReply = backTranslation.text;
+  } catch (err) {
+    console.error("Back translation error:", err);
+  }
+}
     if (intent === "track") {
       const trackRes = await fetch(`${process.env.BASE_URL}/track`, {
         method: "POST",
@@ -285,6 +308,8 @@ app.post("/smart", async (req, res) => {
 app.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);
 });
+
+
 
 
 
