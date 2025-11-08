@@ -1,10 +1,29 @@
-import express from "express";
-import cors from "cors";
-import dotenv from "dotenv";
-import fetch from "node-fetch";
-import OpenAI from "openai";
-import { franc } from "franc";
-import translate from "@vitalets/google-translate-api";
+import express from "express"; import cors 
+from "cors"; import dotenv from "dotenv"; 
+import fetch from "node-fetch"; import OpenAI 
+from "openai";
+
+// 🌍 Free Translation Function using LibreTranslate
+async function translateText(text, targetLang = "en") {
+  try {
+    const res = await fetch("https://libretranslate.de/translate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        q: text,
+        source: "auto",
+        target: targetLang,
+        format: "text",
+      }),
+    });
+
+    const data = await res.json();
+    return data.translatedText;
+  } catch (err) {
+    console.error("❌ Translation error:", err);
+    return text; // fallback if translation fails
+  }
+}
 dotenv.config();
 const app = express();
 app.use(cors());
@@ -97,14 +116,7 @@ app.post("/product", async (req, res) => {
     }
 
     // 🖼️ Create reply message
-    const reply = products
-      .slice(0, 5)
-      .map(
-        (p) =>
-          `🛍️ ${p.title}\n💰 ₹${p.price}\n🔗 ${p.link}`
-      )
-      .join("\n\n");
-
+reply += `🛍️ Product: ${title}\n💸 Price: ₹${price}\n🔗 Buy now: ${url}\n\n`;
     res.json({ reply });
   } catch (err) {
     console.error("Product search error:", err);
@@ -116,8 +128,7 @@ app.post("/track", async (req, res) => {
   const mobile = req.body.mobile?.trim();
 
   if (!mobile) {
-    return res.status(400).json({ error: "❌ Mobile number is required" });
-  }
+    return res.status(400).json({ error: "Type onle mobile number" });  }
 
   try {
     const response = await fetch(
@@ -190,25 +201,16 @@ app.post("/faq", async (req, res) => {
 });
 
 app.post("/smart", async (req, res) => {
-  const userMessage = req.body.message || "";
-  const SHOPIFY_API_URL =
+  let userMessage = req.body.message || "";
+
+// 🌍 Auto translate to English
+userMessage = await translateText(userMessage, "en");
+ const SHOPIFY_API_URL =
     process.env.SHOPIFY_API_URL ||
     `https://${process.env.SHOPIFY_STORE_URL}/admin/api/2023-10`;
-// 🌍 Detect & translate language to English
-const lang = franc(userMessage);
-let translatedMessage = userMessage;
-if (lang !== "eng") {
-  try {
-    const translation = await translate(userMessage, { to: "en" });
-    translatedMessage = translation.text;
-  } catch (err) {
-    console.error("Translation error:", err);
-  }
-}
 
- 
- try {
-    // 🎯 Detect intent
+  try {
+    // 🎯 Detect intent using OpenAI
     const completion = await client.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
@@ -220,7 +222,7 @@ if (lang !== "eng") {
             Respond ONLY with one word: track, product, faq, or chat.
           `,
         },
-        { role: "user", content: translatedMessage },
+        { role: "user", content: userMessage },
       ],
     });
 
@@ -230,16 +232,6 @@ if (lang !== "eng") {
 
     let finalReply = "";
 
-
-// 🌍 Translate back to user’s language (if not English)
-if (lang !== "eng") {
-  try {
-    const backTranslation = await translate(finalReply, { to: lang });
-    finalReply = backTranslation.text;
-  } catch (err) {
-    console.error("Back translation error:", err);
-  }
-}
     if (intent === "track") {
       const trackRes = await fetch(`${process.env.BASE_URL}/track`, {
         method: "POST",
@@ -257,14 +249,7 @@ if (lang !== "eng") {
         body: JSON.stringify({ message: userMessage }),
       });
       const data = await productRes.json();
-
-      if (data.reply) {
-        finalReply = data.reply;
-      } else if (data.error) {
-        finalReply = `❌ ${data.error}`;
-      } else {
-        finalReply = "No products found.";
-      }
+      finalReply = data.reply || data.error || "No products found.";
     }
 
     else if (intent === "faq") {
@@ -284,8 +269,7 @@ if (lang !== "eng") {
         messages: [
           {
             role: "system",
-            content: `
-              You are a polite assistant for Xefere Store.
+            content: `              You are a polite assistant for Xefere Store.
               Only discuss Xefere Store products and policies.
               Never mention other platforms like Amazon or Flipkart.
             `,
@@ -304,10 +288,13 @@ if (lang !== "eng") {
     res.status(500).json({ error: "Something went wrong in smart router." });
   }
 });
-// ✅ Start Server
+
+
+ // ✅ Start Server
 app.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);
 });
+
 
 
 
