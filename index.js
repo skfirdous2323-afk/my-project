@@ -2,7 +2,6 @@ import express from "express"; import cors
 from "cors"; import dotenv from "dotenv"; 
 import fetch from "node-fetch"; import OpenAI 
 from "openai";
-
 // 🌍 Free Translation Function using LibreTranslate
 async function translateText(text, targetLang = "en") {
   try {
@@ -17,13 +16,22 @@ async function translateText(text, targetLang = "en") {
       }),
     });
 
+    // Check if response is JSON
+    const contentType = res.headers.get("content-type");
+    if (!contentType || !contentType.includes("application/json")) {
+      throw new Error("Invalid response from translation API");
+    }
+
     const data = await res.json();
-    return data.translatedText;
+    return data.translatedText || text;
   } catch (err) {
     console.error("❌ Translation error:", err);
-    return text; // fallback if translation fails
+    return text; // fallback: return original text
   }
 }
+
+
+
 dotenv.config();
 const app = express();
 app.use(cors());
@@ -96,33 +104,43 @@ app.post("/product", async (req, res) => {
         price: parseFloat(variant.price),
         image: p.images?.[0]?.src || "",
         link: `https://${process.env.SHOPIFY_STORE_URL}/products/${p.handle}`,
+        updated_at: p.updated_at,
       };
     });
 
-    // ✅ If price filter mentioned
+    // ✅ Apply filters
     if (priceLimit) {
       products = products.filter((p) => p.price <= priceLimit);
     }
 
-    // ✅ If user asked for best/top products
     if (isBestProductQuery) {
-      // Sort by Shopify’s default “updated_at” (newest → oldest)
       products.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
-      products = products.slice(0, 5); // Show top 5
+      products = products.slice(0, 5);
     }
 
     if (products.length === 0) {
-      return res.json({ reply: "❌ Product not found" });
+      return res.json({ reply: "❌ No products found" });
     }
 
     // 🖼️ Create reply message
-reply += `🛍️ Product: ${title}\n💸 Price: ₹${price}\n🔗 Buy now: ${url}\n\n`;
+    let reply = "";
+    for (const p of products) {
+      reply += `🛍️ ${p.title}\n💰 ₹${p.price}\n🔗 ${p.link}\n\n`;
+    }
+
     res.json({ reply });
   } catch (err) {
-    console.error("Product search error:", err);
+    console.error("🧨 Product search error:", err);
     res.status(500).json({ error: "Server error" });
   }
 });
+
+
+
+
+
+
+
 // ✅ Order Tracking Route (via Mobile Number)
 app.post("/track", async (req, res) => {
   const mobile = req.body.mobile?.trim();
@@ -175,6 +193,9 @@ app.post("/track", async (req, res) => {
     res.status(500).json({ error: "Failed to track order" });
   }
 });
+
+
+
 
 // ✅ FAQ / Return Policy Route
 app.post("/faq", async (req, res) => {
@@ -242,15 +263,19 @@ userMessage = await translateText(userMessage, "en");
       finalReply = data.message || data.error || "Could not fetch tracking info.";
     }
 
-    else if (intent === "product") {
-      const productRes = await fetch(`${process.env.BASE_URL}/product`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userMessage }),
-      });
-      const data = await productRes.json();
-      finalReply = data.reply || data.error || "No products found.";
-    }
+
+else if (intent === "product") {
+  const productRes = await fetch(`${process.env.BASE_URL}/product`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message: userMessage }),
+  });
+  const data = await productRes.json();
+  finalReply = data.reply || data.error || "No products found.";
+}
+
+
+
 
     else if (intent === "faq") {
       const faqRes = await fetch(`${process.env.BASE_URL}/faq`, {
