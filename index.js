@@ -371,6 +371,7 @@ try {
       finalReply = data.message || data.error || "Could not fetch tracking info.";
     }
 
+
 // ✅ Product
 else if (intent === "product") {
   const productRes = await fetch(`${process.env.BASE_URL}/product`, {
@@ -378,20 +379,54 @@ else if (intent === "product") {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ message: userMessage }),
   });
+
   const data = await productRes.json();
+  let replyText = "🛍️ Check out our top products below 👇\n\n";
 
   if (data.products && data.products.length > 0) {
-    finalReply = data.products
-      .map(
-        (p) => `✨ ${p.title}\n💰 ₹${p.price}\n🔗 ${p.link}`
-      )
-      .join("\n\n");
+    // Build formatted text for chat
+    for (const p of data.products) {
+      replyText += `✨ *${p.title}*\n`;
+      replyText += `💰 Price: ₹${p.price}\n`;
+      replyText += `🔗 ${p.link}\n`;
+      if (!p.available || p.available === "Out of Stock ❌")
+        replyText += `⚠️ Currently Out of Stock\n`;
+      replyText += `\n`;
+    }
+
+    finalReply = replyText;
+
+    // ✅ Return response once
+    return res.json({
+      reply: finalReply,
+      products: data.products.map((p) => ({
+        title: p.title,
+        price: `₹${p.price}`,
+        link: p.link,
+        image: p.image,
+        available: p.available || "Out of Stock ❌",
+        shortDescription: p.shortDescription || "Popular product",
+      })),
+      footer: "✨ More deals available on our store homepage!",
+    });
   } else {
-    finalReply = data.reply || data.error || "No products found.";
+    // ✅ Also use return here
+    return res.json({
+      reply: data.reply || data.error || "No products found.",
+      products: [],
+    });
   }
-} // 👈 You were missing this closing brace for the 'else if (intent === "product")'
+}
+
+
+
+
+
 
 // ✅ FAQ
+
+
+
 else if (intent === "faq") {
   const faqRes = await fetch(`${process.env.BASE_URL}/faq`, {
     method: "POST",
