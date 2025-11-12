@@ -199,23 +199,20 @@ for (const p of products) {
   replyText += `\n`;
 }
 
-// 🧠 Create beautiful JSON response for frontend
 res.json({
-  reply: replyText.trim(),
-  count: products.length,
+  reply: "🛍️ Check out our top products below 👇",
   products: products.map((p) => ({
     title: p.title,
     price: `₹${p.price}`,
     link: p.link,
-    image: p.image || "https://via.placeholder.com/300x300?text=No+Image",
+    image: p.image,
     available: p.available ? "In Stock ✅" : "Out of Stock ❌",
     shortDescription: p.tags
       ? `Tags: ${p.tags.split(",").slice(0, 3).join(", ")}`
       : "Popular product",
   })),
-  footer: "✨ More deals available on our store homepage!",
+  footer: "✨ More deals available on our store homepage!"
 });
-
 
 
 
