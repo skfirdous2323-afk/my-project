@@ -4,34 +4,38 @@ import fetch from "node-fetch"; import OpenAI
 from "openai";
 
 
-// 🌍 Free Translation Function using LibreTranslate
+// 🌍 Improved Translation Function with Fallback
 async function translateText(text, targetLang = "en") {
-  try {
-    const res = await fetch("https://libretranslate.de/translate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        q: text,
-        source: "auto",
-        target: targetLang,
-        format: "text",
-      }),
-    });
+  const urls = [
+    "https://translate.astian.org/translate",
+    "https://libretranslate.com/translate",
+    "https://libretranslate.de/translate"
+  ];
 
-    // Check if response is JSON
-    const contentType = res.headers.get("content-type");
-    if (!contentType || !contentType.includes("application/json")) {
-      throw new Error("Invalid response from translation API");
+  for (const url of urls) {
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          q: text,
+          source: "auto",
+          target: targetLang,
+          format: "text",
+        }),
+      });
+
+      const data = await res.json();
+      if (data.translatedText) return data.translatedText;
+      throw new Error("Invalid response");
+    } catch (err) {
+      console.error(`⚠️ ${url} failed:`, err.message);
     }
-
-    const data = await res.json();
-    return data.translatedText || text;
-  } catch (err) {
-    console.error("❌ Translation error:", err);
-    return text; // fallback: return original text
   }
-}
 
+  console.error("❌ All translation APIs failed. Returning original text.");
+  return text; // fallback to original
+}
 
 
 dotenv.config();
@@ -175,41 +179,44 @@ app.post("/product", async (req, res) => {
       });
     }
 
-    // 🖼️ Create formatted reply
-    let reply = "";
+// 🖼️ Create formatted reply
+let replyText = "";
 
-    if (isGift) {
-      reply += "🎁 Here are some products perfect for gifting:\n\n";
-    } else if (isBestProductQuery) {
-      reply += "🌟 Our most popular & trending picks:\n\n";
-    } else if (isDiscount) {
-      reply += "💸 Products currently on discount:\n\n";
-    } else {
-      reply += "🛍️ Here are some products matching your request:\n\n";
-    }
+if (isGift) {
+  replyText += "🎁 Here are some products perfect for gifting:\n\n";
+} else if (isBestProductQuery) {
+  replyText += "🌟 Our most popular & trending picks:\n\n";
+} else if (isDiscount) {
+  replyText += "💸 Products currently on discount:\n\n";
+} else {
+  replyText += "🛍️ Check out our top products below 👇\n\n";
+}
 
-    for (const p of products) {
-      reply += `✨ *${p.title}*\n💰 Price: ₹${p.price}\n🔗 ${p.link}\n`;
-      if (!p.available) reply += `⚠️ Currently Out of Stock\n`;
-      reply += `\n`;
-    }
+// 💬 Create formatted text message
+for (const p of products) {
+  replyText += `✨ *${p.title}*\n💰 Price: ₹${p.price}\n🔗 ${p.link}\n`;
+  if (!p.available) replyText += `⚠️ Currently Out of Stock\n`;
+  replyText += `\n`;
+}
 
-    // Smart fallback message if too generic query
-    if (userMessage.trim().length < 3) {
-      reply = "🤔 Could you please specify what type of product you're looking for?";
-    }
-
-
-
-   res.json({
-  reply: "Check this product",
-  products: products.map(p => ({
+// 🧠 Create beautiful JSON response for frontend
+res.json({
+  reply: replyText.trim(),
+  count: products.length,
+  products: products.map((p) => ({
     title: p.title,
-    price: p.price,
+    price: `₹${p.price}`,
     link: p.link,
-    image: p.image
-  }))
+    image: p.image || "https://via.placeholder.com/300x300?text=No+Image",
+    available: p.available ? "In Stock ✅" : "Out of Stock ❌",
+    shortDescription: p.tags
+      ? `Tags: ${p.tags.split(",").slice(0, 3).join(", ")}`
+      : "Popular product",
+  })),
+  footer: "✨ More deals available on our store homepage!",
 });
+
+
 
 
   } catch (err) {
@@ -367,27 +374,37 @@ try {
       finalReply = data.message || data.error || "Could not fetch tracking info.";
     }
 
-    // ✅ Product
-    else if (intent === "product") {
-      const productRes = await fetch(`${process.env.BASE_URL}/product`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userMessage }),
-      });
-      const data = await productRes.json();
-      finalReply = data.reply || data.error || "No products found.";
-    }
+// ✅ Product
+else if (intent === "product") {
+  const productRes = await fetch(`${process.env.BASE_URL}/product`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message: userMessage }),
+  });
+  const data = await productRes.json();
 
-    // ✅ FAQ
-    else if (intent === "faq") {
-      const faqRes = await fetch(`${process.env.BASE_URL}/faq`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userMessage }),
-      });
-      const data = await faqRes.json();
-      finalReply = data.reply || "No FAQ found.";
-    }
+  if (data.products && data.products.length > 0) {
+    finalReply = data.products
+      .map(
+        (p) => `✨ ${p.title}\n💰 ₹${p.price}\n🔗 ${p.link}`
+      )
+      .join("\n\n");
+  } else {
+    finalReply = data.reply || data.error || "No products found.";
+  }
+} // 👈 You were missing this closing brace for the 'else if (intent === "product")'
+
+// ✅ FAQ
+else if (intent === "faq") {
+  const faqRes = await fetch(`${process.env.BASE_URL}/faq`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message: userMessage }),
+  });
+  const data = await faqRes.json();
+  finalReply = data.reply || "No FAQ found.";
+}    
+
 
     // 💬 General Chat / fallback
     else {
